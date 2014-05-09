@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#
+#coding: utf8
 # Copyright 2009 Facebook
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -21,6 +21,7 @@ import tornado.ioloop
 import tornado.web
 import os.path
 import re
+import time
 import torndb
 import uuid
 import tornado.autoreload
@@ -31,10 +32,11 @@ from tornado.options import define, options, parse_command_line
 
 define("port", default=8888, help="run on the given port", type=int)
 
+''' 设置数据库'''
 define("mysql_host", default="127.0.0.1:3306", help="database host")
 define("mysql_database", default="chat", help="database name")
-define("mysql_user", default="happylyang", help="database user")
-define("mysql_password", default="programmer", help="database password")
+define("mysql_user", default="NAME", help="database user")
+define("mysql_password", default="PASSWORD", help="database password")
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -106,8 +108,8 @@ class BaseHandler(tornado.web.RequestHandler):
     def db(self):
         return self.application.db
     def AddNewMessage(self,message):
+        '''将新消息插入数据库'''
         try:
-            print message["body"]
             self.db.execute(
                 "insert into `messages` (`from`, `to`, `body`,`html`,`mid`) values (%s,%s,%s,%s,%s)",
                 message["from"],message["to"],message["body"],message["html"],message["mid"]
@@ -119,11 +121,13 @@ class MainHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self):
         ownname = self.get_secure_cookie("nickname")
+        '''仅显示对所有人发送的消息及在线用户'''
         msgs = [msg for msg in global_message_buffer.cache if msg["to"] == "All"]
         usrs = self.db.query("select username from users where username <> %s and online = %s",ownname,1)
         self.render("index.html", messages=msgs, users=usrs)
 
 class PrivateChatHandler(BaseHandler):
+    '''处理私人消息'''
     @tornado.web.authenticated
     def get(self,to_user):
         current_user = self.get_secure_cookie("nickname")
@@ -138,10 +142,12 @@ class MessageNewHandler(BaseHandler):
     def post(self):
         message = {
             "mid": str(uuid.uuid4()),
+            "time": time.strftime('%H:%M:%S',time.localtime(time.time())),
             "from": self.get_current_user(),
             "body": self.get_argument("body"),
             "to": self.get_argument("to","All")
         }
+        print message
         message["html"] = tornado.escape.to_basestring(
             self.render_string("message.html", message=message))
         self.AddNewMessage(message)
@@ -175,28 +181,32 @@ class AuthLoginHandler(BaseHandler):
         nickname = self.get_argument("nickname",None)
         ip = self.request.remote_ip 
         if nickname is None:
+            '''昵称不能为空'''
             msg= 'Please input your nickname!'
             self.render("login.html",error=msg)
             return
         m = re.search(u'^[\u4e00-\u9fa50-9a-zA-Z_]+$', nickname)
         if m is None:
+            '''昵称不能含有非法字符'''
             msg= 'Invalid character deteced,please use only with Chinese and letters!'
             self.render("login.html",error=msg)
             return
         user = self.db.get("select ip from users where username = %s",nickname)
         if user is not None:
+            '''昵称不能重复'''
             msg='Nick name was already in use!'#System All
             self.render("login.html",error=msg)
         else:
             self.set_secure_cookie("nickname",nickname)
-            #global_user_buffer.append(nickname)
             try:
+                '''插入用户信息'''
                 self.db.execute("insert into `users` (`username`, `ip`, `online`) values (%s,%s,%s)",nickname,ip,1)
             except:
                 self.redirect("/auth/login")
             message = {
                 "mid": "special",
                 "from": "System",
+                "time": time.strftime('%H:%M:%S',time.localtime(time.time())),
                 "to":"All",
                 "body": "Welcome new user:"+nickname+" adding in!",
             }
@@ -220,9 +230,11 @@ class AuthLogoutHandler(BaseHandler):
         self.deleted_online_user()
         self.redirect("/")
     def deleted_online_user(self):
+        '''系统用户注销后在聊天室显示注销消息'''
         nickname = self.get_current_user()
         message = {
             "mid": "closed",
+            "time": time.strftime('%H:%M:%S',time.localtime(time.time())),
             "from": "System",
             "body": nickname+" have disconnected from the web!",
             "to": self.get_argument("to","All")
