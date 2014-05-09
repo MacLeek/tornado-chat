@@ -1,0 +1,19 @@
+<div class="message" id="m{{ message["mid"] }}">
+	<b>
+		<strong>
+			{% if message["from"] == "System" %}
+			<font color="red">
+			{{message["time"]}}[{{ message["from"] }}]
+		</strong>: 
+	</b>
+		{% module linkify(message["body"]) %}
+	</font>
+			{% else %}
+			<font color="blue">
+			{{message["time"]}}[{{ message["from"] }}]
+		</strong>: 
+	</b>
+		{% module linkify(message["body"]) %}
+	</font>
+			{% end %}
+</div>
